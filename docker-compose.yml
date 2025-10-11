@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: furnet-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DEBUG=True
+      - CORS_ORIGINS=http://localhost,http://localhost:80
+      - INSTANCE_URL=http://localhost:8000
+      # Note: Animal identity is configured in backend/config.py (AnimalConfig class)
+    networks:
+      - furnet
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: furnet-frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+    networks:
+      - furnet
+
+networks:
+  furnet:
+    driver: bridge

@@ -1,0 +1,11 @@
+# Root level gitignore
+.DS_Store
+*.log
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
