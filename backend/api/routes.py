@@ -3,8 +3,12 @@ from pydantic import BaseModel
 from typing import List
 from urllib.parse import urlparse
 import httpx
+import time
+import logging
 from api.models import Animal, Friend
 from config import settings, animal_config
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -26,6 +30,19 @@ def generate_animal_id(instance_url: str, animal_name: str) -> str:
 # Request model for adding friends by URL
 class AddFriendRequest(BaseModel):
     instance_url: str
+
+# Request model for health check
+class HealthCheckRequest(BaseModel):
+    instance_urls: List[str]
+
+# Response model for health check
+class InstanceHealth(BaseModel):
+    instance_url: str
+    is_alive: bool
+    response_time_ms: float | None = None
+    error: str | None = None
+    name: str | None = None
+    emoji: str | None = None
 
 # Sample data model
 class Item(BaseModel):
@@ -240,3 +257,101 @@ async def add_friend_by_url(request: AddFriendRequest):
             status_code=500,
             detail=f"Unexpected error while adding friend: {str(e)}"
         )
+
+
+@router.post("/health-check", response_model=List[InstanceHealth])
+async def check_instance_health(request: HealthCheckRequest):
+    """
+    Check the health status of multiple FurNet instances.
+
+    This endpoint proxies health checks through the backend to avoid CORS issues.
+    It attempts to fetch the /api/me endpoint from each instance and reports
+    whether the instance is alive, along with response time metrics.
+    """
+    logger.info(f"Starting health check for {len(request.instance_urls)} instances")
+    results = []
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for instance_url in request.instance_urls:
+            # Normalize the instance URL
+            normalized_url = instance_url.strip()
+            if not normalized_url.startswith('http://') and not normalized_url.startswith('https://'):
+                normalized_url = 'https://' + normalized_url
+
+            # Remove trailing slash if present
+            normalized_url = normalized_url.rstrip('/')
+
+            # Construct the /api/me endpoint URL
+            health_check_url = f"{normalized_url}/api/me"
+            logger.info(f"Checking health for: {normalized_url} (URL: {health_check_url})")
+
+            start_time = time.time()
+
+            try:
+                response = await client.get(health_check_url)
+                response.raise_for_status()
+
+                # Calculate response time in milliseconds
+                response_time_ms = (time.time() - start_time) * 1000
+
+                # Extract name and emoji from response
+                data = response.json()
+                animal_name = data.get('name', None)
+                animal_emoji = data.get('emoji', None)
+
+                logger.info(f"✓ {normalized_url} is ONLINE - Response time: {round(response_time_ms, 2)}ms, Name: {animal_name}")
+                logger.info(f"  Response data: {data}")
+
+                results.append(InstanceHealth(
+                    instance_url=normalized_url,
+                    is_alive=True,
+                    response_time_ms=round(response_time_ms, 2),
+                    error=None,
+                    name=animal_name,
+                    emoji=animal_emoji
+                ))
+
+            except httpx.HTTPStatusError as e:
+                response_time_ms = (time.time() - start_time) * 1000
+                error_msg = f"HTTP {e.response.status_code}"
+                logger.warning(f"✗ {normalized_url} is OFFLINE - {error_msg}")
+                results.append(InstanceHealth(
+                    instance_url=normalized_url,
+                    is_alive=False,
+                    response_time_ms=round(response_time_ms, 2),
+                    error=error_msg,
+                    name=None,
+                    emoji=None
+                ))
+
+            except httpx.RequestError as e:
+                response_time_ms = (time.time() - start_time) * 1000
+                error_msg = f"Connection failed: {type(e).__name__}"
+                logger.warning(f"✗ {normalized_url} is OFFLINE - {error_msg}: {str(e)}")
+                results.append(InstanceHealth(
+                    instance_url=normalized_url,
+                    is_alive=False,
+                    response_time_ms=round(response_time_ms, 2),
+                    error=error_msg,
+                    name=None,
+                    emoji=None
+                ))
+
+            except Exception as e:
+                response_time_ms = (time.time() - start_time) * 1000
+                error_msg = f"Error: {type(e).__name__}"
+                logger.error(f"✗ {normalized_url} is OFFLINE - Unexpected error: {str(e)}")
+                results.append(InstanceHealth(
+                    instance_url=normalized_url,
+                    is_alive=False,
+                    response_time_ms=round(response_time_ms, 2),
+                    error=error_msg,
+                    name=None,
+                    emoji=None
+                ))
+
+    online_count = sum(1 for r in results if r.is_alive)
+    offline_count = len(results) - online_count
+    logger.info(f"Health check complete: {online_count} online, {offline_count} offline out of {len(results)} instances")
+
+    return results

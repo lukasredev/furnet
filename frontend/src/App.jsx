@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { Routes, Route, Link } from 'react-router-dom'
 import AnimalProfile from './components/AnimalProfile'
 import FriendList from './components/FriendList'
+import Monitoring from './components/Monitoring'
 
 function App() {
   const [animal, setAnimal] = useState(null)
@@ -88,7 +90,7 @@ function App() {
     }
   }
 
-  return (
+  const HomePage = () => (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
@@ -102,7 +104,13 @@ function App() {
                 Distributed Animal Social Network
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
+              <Link
+                to="/monitoring"
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-mono rounded transition-colors"
+              >
+                Monitoring
+              </Link>
               <span className="px-2 py-1 bg-green-50 text-green-700 text-xs font-mono rounded border border-green-200">
                 ONLINE
               </span>
@@ -234,6 +242,13 @@ function App() {
         </footer>
       </div>
     </div>
+  )
+
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/monitoring" element={<Monitoring />} />
+    </Routes>
   )
 }
 
