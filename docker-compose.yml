@@ -1,10 +1,9 @@
-version: "3.8"
-
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # image: ghcr.io/lukasredev/furnet/backend:main-9ad2eca
     container_name: furnet-backend
     ports:
       - "8000:8000"
@@ -22,11 +21,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    # image: ghcr.io/lukasredev/furnet/frontend:main-9ad2eca
     container_name: furnet-frontend
     ports:
       - "8080:8080"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - furnet
 

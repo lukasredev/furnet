@@ -235,7 +235,25 @@ function App() {
         {/* Footer */}
         <footer className="mt-12 pt-6 border-t border-gray-200 text-center">
           <p className="text-gray-400 font-mono text-xs">
-            DevOps Workshop • FurNet v0.1.0
+            DevOps Workshop by{' '}
+            <a
+              href="https://github.com/lukasredev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-blue-500 transition-colors"
+            >
+              lukasredev
+            </a>
+            {' '}•{' '}
+            <a
+              href="https://github.com/lukasredev/furnet"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-blue-500 transition-colors"
+            >
+              GitHub
+            </a>
+            {' '}• FurNet v0.1.0
           </p>
         </footer>
       </div>

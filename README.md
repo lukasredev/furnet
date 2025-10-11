@@ -185,16 +185,6 @@ npm run preview
 - **Tailwind CSS**: Utility-first CSS framework
 - **Axios**: (Available) HTTP client for API requests
 
-## Next Steps
-
-- Add authentication and user management
-- Implement a database (PostgreSQL, MongoDB, etc.)
-- Add form validation
-- Create more CRUD operations
-- Add unit and integration tests
-- Set up CI/CD pipeline
-- Deploy to production (Vercel, Railway, etc.)
-
 ## License
 
 MIT

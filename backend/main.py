@@ -24,6 +24,14 @@ app.include_router(router, prefix="/api")
 async def root():
     return {"message": "Welcome to FurNet API"}
 
+@app.get("/health")
+async def health_check():
+    """
+    General health check endpoint for docker-compose and simple monitoring.
+    Returns a simple status indicating the service is healthy.
+    """
+    return {"status": "healthy"}
+
 @app.get("/health/live")
 async def liveness_check():
     """
