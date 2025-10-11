@@ -55,53 +55,29 @@ function App() {
     setFriendSuccess(null)
 
     try {
-      // Step 1: Fetch friend's /api/me endpoint from their instance
-      let friendInstanceUrl = friendUrl.trim()
-      if (!friendInstanceUrl.startsWith('http://') && !friendInstanceUrl.startsWith('https://')) {
-        friendInstanceUrl = 'https://' + friendInstanceUrl
-      }
-
-      // Remove trailing slash if present
-      friendInstanceUrl = friendInstanceUrl.replace(/\/$/, '')
-
-      const friendMeUrl = `${friendInstanceUrl}/api/me`
-
-      const friendResponse = await fetch(friendMeUrl)
-      if (!friendResponse.ok) {
-        throw new Error(`Failed to fetch friend's profile from ${friendMeUrl}. Status: ${friendResponse.status}`)
-      }
-
-      const friendData = await friendResponse.json()
-
-      // Check if trying to add yourself as a friend
-      if (friendData.id === animal.id) {
-        throw new Error("You can't add yourself as a friend!")
-      }
-
-      // Step 2: Only if Step 1 succeeds, add friend to our backend
-      const addFriendResponse = await fetch('/api/friends', {
+      // Send the friend instance URL to our backend
+      // Backend will fetch the friend's /api/me endpoint to avoid CORS issues
+      const response = await fetch('/api/friends/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          unique_id: friendData.id,
-          dns_name: new URL(friendInstanceUrl).hostname,
-          name: friendData.name,
+          instance_url: friendUrl.trim(),
         }),
       })
 
-      if (!addFriendResponse.ok) {
-        const errorData = await addFriendResponse.json()
-        throw new Error(errorData.detail || 'Failed to add friend to our backend')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to add friend')
       }
 
-      const newFriend = await addFriendResponse.json()
+      const newFriend = await response.json()
 
-      // Step 3: Update UI with new friend
+      // Update UI with new friend
       setFriends([...friends, newFriend])
       setFriendUrl('')
-      setFriendSuccess(`Successfully added ${friendData.name} as a friend!`)
+      setFriendSuccess(`Successfully added ${newFriend.name} as a friend!`)
 
       // Clear success message after 3 seconds
       setTimeout(() => setFriendSuccess(null), 3000)

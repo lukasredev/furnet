@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
 from urllib.parse import urlparse
+import httpx
 from api.models import Animal, Friend
 from config import settings, animal_config
 
@@ -21,6 +22,10 @@ def generate_animal_id(instance_url: str, animal_name: str) -> str:
     # Normalize animal name to lowercase and replace spaces with hyphens
     normalized_name = animal_name.lower().replace(' ', '-')
     return f"{domain_without_port}:{normalized_name}"
+
+# Request model for adding friends by URL
+class AddFriendRequest(BaseModel):
+    instance_url: str
 
 # Sample data model
 class Item(BaseModel):
@@ -122,3 +127,88 @@ async def get_friends():
     Returns a list of all friends that have been connected to this instance.
     """
     return friends_db
+
+
+@router.post("/friends/add", response_model=Friend)
+async def add_friend_by_url(request: AddFriendRequest):
+    """
+    Add a friend by fetching their instance URL.
+
+    This endpoint proxies the friend request through the backend to avoid CORS issues.
+    It fetches the friend's /api/me endpoint, validates the response, and adds them
+    to the friends list.
+    """
+    # Normalize the instance URL
+    friend_instance_url = request.instance_url.strip()
+    if not friend_instance_url.startswith('http://') and not friend_instance_url.startswith('https://'):
+        friend_instance_url = 'https://' + friend_instance_url
+
+    # Remove trailing slash if present
+    friend_instance_url = friend_instance_url.rstrip('/')
+
+    # Construct the /api/me endpoint URL
+    friend_me_url = f"{friend_instance_url}/api/me"
+
+    try:
+        # Fetch friend's profile from their instance
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(friend_me_url)
+            response.raise_for_status()
+            friend_data = response.json()
+
+        # Validate that we got the expected fields
+        if not all(key in friend_data for key in ['id', 'name', 'instance_url']):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid response from friend instance - missing required fields"
+            )
+
+        # Get our own animal ID to prevent self-friending
+        our_id = generate_animal_id(settings.instance_url, animal_config.animal_name)
+
+        # Check if trying to add yourself as a friend
+        if friend_data['id'] == our_id:
+            raise HTTPException(
+                status_code=400,
+                detail="You can't add yourself as a friend!"
+            )
+
+        # Check if friend already exists
+        for existing_friend in friends_db:
+            if existing_friend.unique_id == friend_data['id']:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Friend with unique_id '{friend_data['id']}' already exists"
+                )
+
+        # Extract DNS name from the friend's instance URL
+        parsed = urlparse(friend_data['instance_url'])
+        dns_name = parsed.netloc if parsed.netloc else parsed.path
+        # Remove port if present
+        dns_name = dns_name.split(':')[0] if ':' in dns_name else dns_name
+
+        # Create and add the friend
+        new_friend = Friend(
+            unique_id=friend_data['id'],
+            dns_name=dns_name,
+            name=friend_data['name']
+        )
+
+        friends_db.append(new_friend)
+        return new_friend
+
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to fetch friend's profile from {friend_me_url}. Status: {e.response.status_code}"
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to connect to friend instance: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error while adding friend: {str(e)}"
+        )
