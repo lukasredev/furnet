@@ -114,6 +114,20 @@ async def add_friend(friend: Friend):
                 detail=f"Friend with unique_id '{friend.unique_id}' already exists"
             )
 
+    # Check if we've reached the maximum number of friends (1000)
+    if len(friends_db) >= 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum number of friends (1000) reached. Cannot add more friends."
+        )
+
+    # Validate that the friend is from the allowed domain (vsos.ethz.ch)
+    if not friend.dns_name.endswith('vsos.ethz.ch'):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Friends must be from the vsos.ethz.ch domain. Got: {friend.dns_name}"
+        )
+
     # Add friend to in-memory storage
     friends_db.append(friend)
     return friend
@@ -181,11 +195,25 @@ async def add_friend_by_url(request: AddFriendRequest):
                     detail=f"Friend with unique_id '{friend_data['id']}' already exists"
                 )
 
+        # Check if we've reached the maximum number of friends (1000)
+        if len(friends_db) >= 1000:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum number of friends (1000) reached. Cannot add more friends."
+            )
+
         # Extract DNS name from the friend's instance URL
         parsed = urlparse(friend_data['instance_url'])
         dns_name = parsed.netloc if parsed.netloc else parsed.path
         # Remove port if present
         dns_name = dns_name.split(':')[0] if ':' in dns_name else dns_name
+
+        # Validate that the friend is from the allowed domain (vsos.ethz.ch)
+        if not dns_name.endswith('vsos.ethz.ch'):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Friends must be from the vsos.ethz.ch domain. Got: {dns_name}"
+            )
 
         # Create and add the friend
         new_friend = Friend(
