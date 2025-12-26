@@ -238,6 +238,11 @@ function App() {
               GitHub
             </a>
             {' '}• FurNet v0.1.0
+            {import.meta.env.VITE_COMMIT_HASH && (
+              <span className="ml-2 text-gray-500">
+                ({import.meta.env.VITE_COMMIT_HASH.slice(0, 7)})
+              </span>
+            )}
           </p>
         </footer>
       </div>
