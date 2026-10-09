@@ -27,6 +27,19 @@ def generate_animal_id(instance_url: str, animal_name: str) -> str:
     normalized_name = animal_name.lower().replace(' ', '-')
     return f"{domain_without_port}:{normalized_name}"
 
+
+# Domains that friends are allowed to come from (the domain itself or any subdomain)
+ALLOWED_FRIEND_DOMAINS = ("vsos.ethz.ch", "furnet.lukasre.ch")
+
+
+def is_allowed_friend_domain(dns_name: str) -> bool:
+    """Check whether a friend's DNS name is one of the allowed domains or a subdomain of one."""
+    dns_name = dns_name.lower().rstrip('.')
+    return any(
+        dns_name == domain or dns_name.endswith(f".{domain}")
+        for domain in ALLOWED_FRIEND_DOMAINS
+    )
+
 # Request model for adding friends by URL
 class AddFriendRequest(BaseModel):
     instance_url: str
@@ -138,11 +151,11 @@ async def add_friend(friend: Friend):
             detail="Maximum number of friends (1000) reached. Cannot add more friends."
         )
 
-    # Validate that the friend is from the allowed domain (vsos.ethz.ch)
-    if not friend.dns_name.endswith('vsos.ethz.ch'):
+    # Validate that the friend is from one of the allowed domains
+    if not is_allowed_friend_domain(friend.dns_name):
         raise HTTPException(
             status_code=403,
-            detail=f"Friends must be from the vsos.ethz.ch domain. Got: {friend.dns_name}"
+            detail=f"Friends must be from one of these domains: {', '.join(ALLOWED_FRIEND_DOMAINS)}. Got: {friend.dns_name}"
         )
 
     # Add friend to in-memory storage
@@ -225,11 +238,11 @@ async def add_friend_by_url(request: AddFriendRequest):
         # Remove port if present
         dns_name = dns_name.split(':')[0] if ':' in dns_name else dns_name
 
-        # Validate that the friend is from the allowed domain (vsos.ethz.ch)
-        if not dns_name.endswith('vsos.ethz.ch'):
+        # Validate that the friend is from one of the allowed domains
+        if not is_allowed_friend_domain(dns_name):
             raise HTTPException(
                 status_code=403,
-                detail=f"Friends must be from the vsos.ethz.ch domain. Got: {dns_name}"
+                detail=f"Friends must be from one of these domains: {', '.join(ALLOWED_FRIEND_DOMAINS)}. Got: {dns_name}"
             )
 
         # Create and add the friend

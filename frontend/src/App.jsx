@@ -90,7 +90,9 @@ function App() {
     }
   }
 
-  const HomePage = () => (
+  // Plain JSX rather than a nested component: a component defined inside App would be a
+  // new type on every render, so React would remount the page (resetting scroll) on each keystroke
+  const homePage = (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
@@ -251,7 +253,7 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route path="/" element={homePage} />
       <Route path="/monitoring" element={<Monitoring />} />
     </Routes>
   )
