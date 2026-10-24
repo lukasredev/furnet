@@ -17,3 +17,17 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+
+  # Docker base images (pinned to patch versions in the Dockerfiles)
+  - package-ecosystem: "docker"
+    directories:
+      - "/backend"
+      - "/frontend"
+    schedule:
+      interval: "daily"
+
+  # Docker Compose images (gateway)
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "daily"
