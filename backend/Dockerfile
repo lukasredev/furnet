@@ -14,6 +14,10 @@ COPY . .
 # Install curl for health checks
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
+# Run as an unprivileged user
+RUN useradd --system --uid 10001 furnet
+USER furnet
+
 # Expose port
 EXPOSE 8000
 

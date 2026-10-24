@@ -1,6 +1,12 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
+
+# Limits for data that comes from other instances
+MAX_NAME_LENGTH = 100
+MAX_HOSTNAME_LENGTH = 253
+# A bare DNS hostname: dot-separated labels of letters, digits and inner hyphens
+HOSTNAME_PATTERN = r"^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
 
 
 class Friend(BaseModel):
@@ -10,13 +16,14 @@ class Friend(BaseModel):
     Represents a friend relationship between this instance and another FurNet instance.
     Stores the unique identifier (DNS name + animal name) along with metadata.
     """
-    unique_id: str = Field(...,
+    unique_id: str = Field(..., max_length=MAX_HOSTNAME_LENGTH + 1 + MAX_NAME_LENGTH,
                            description="Unique identifier (DNS name:animal name)")
-    dns_name: str = Field(...,
+    dns_name: str = Field(..., max_length=MAX_HOSTNAME_LENGTH, pattern=HOSTNAME_PATTERN,
                           description="DNS hostname of the friend instance")
-    name: str = Field(..., description="Animal name of the friend")
+    name: str = Field(..., min_length=1, max_length=MAX_NAME_LENGTH,
+                      description="Animal name of the friend")
     connected_at: datetime = Field(
-        default_factory=datetime.utcnow, description="When the friendship was established")
+        default_factory=lambda: datetime.now(timezone.utc), description="When the friendship was established")
 
     class Config:
         json_schema_extra = {

@@ -17,8 +17,8 @@ COPY . .
 # Build the app
 RUN npm run build
 
-# Production stage
-FROM nginx:1.30.6-alpine
+# Production stage (the unprivileged image runs nginx as a non-root user)
+FROM nginxinc/nginx-unprivileged:1.30.6-alpine
 
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html

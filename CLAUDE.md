@@ -20,20 +20,23 @@ furnet/
 │   ├── main.py              # FastAPI app, CORS, /health endpoints, mounts router at /api
 │   ├── config.py            # Settings (env vars) + AnimalConfig (hardcoded identity)
 │   ├── api/models.py        # Pydantic models: Animal, Friend
-│   ├── api/routes.py        # All /api endpoints, friend domain allowlist
+│   ├── api/routes.py        # All /api endpoints, friend domain allowlist, remote fetching
 │   ├── requirements.txt
 │   ├── .env.example
-│   └── Dockerfile           # python:3.14-slim, uvicorn on :8000
+│   └── Dockerfile           # python:3.14-slim, uvicorn on :8000, runs as user furnet
 ├── frontend/
 │   ├── src/App.jsx          # Home page (profile, add-friend form, friends) + routes
-│   ├── src/components/      # AnimalProfile, FriendList, Monitoring, ItemList (unused)
+│   ├── src/components/      # AnimalProfile, FriendList, Monitoring
 │   ├── vite.config.js       # Dev server :5173, proxies /api -> localhost:8000
 │   ├── nginx.conf           # Serves the built SPA on :8080 + static /health endpoints
-│   └── Dockerfile           # Node build stage -> nginx:alpine
+│   └── Dockerfile           # Node build stage -> nginx-unprivileged (non-root)
+├── tests/                   # Backend pytest suite (conftest.py has the fake network)
+├── pytest.ini
 ├── docker-compose.yml       # backend + frontend + gateway (http://localhost:8080)
 ├── gateway.conf             # /api, /health, /docs, /openapi.json -> backend; rest -> frontend
 └── .github/
     ├── workflows/docker-publish.yml   # Builds and pushes images to GHCR
+    ├── workflows/tests.yml            # Runs backend and frontend tests
     └── dependabot.yml                 # Daily updates: pip, npm, actions, docker, compose
 ```
 
@@ -61,10 +64,28 @@ Frontend production build: `npm run build` (and `npm run preview` to serve it).
 
 ### Tests and tooling
 
-There is no test suite yet, and no linter, formatter or type checker is configured
-(no pytest, black, ruff or mypy in the repo). Verify changes by running the app:
-exercise endpoints via `http://localhost:8000/docs` or `curl`, and load the frontend.
-If you add tests, use pytest in a top-level `tests/` directory.
+```bash
+# Backend: pytest in the top-level tests/ directory (pytest.ini puts backend/ on the path)
+pip install -r backend/requirements-dev.txt   # in the backend venv
+pytest                                        # from the repo root
+
+# Frontend: Vitest + Testing Library, tests sit next to the code as *.test.jsx
+cd frontend && npm test
+```
+
+CI runs both on pushes to `main` and on pull requests (`.github/workflows/tests.yml`).
+
+- `tests/conftest.py` routes DNS lookups and every `httpx.AsyncClient` through a fake
+  network (the autouse `network` fixture), so tests never reach real hosts, and it
+  resets `friends_db` between tests. It routes by `Host` header because requests to
+  hosts outside the allowlist go to a pinned IP. Frontend tests stub `fetch` with
+  `mockFetch` from `src/test/fetch.js`.
+- Tests read the expected animal from `AnimalConfig` instead of hardcoding it, so they
+  keep passing after participants change their animal. Keep it that way.
+- `tests/test_security.py` covers SSRF, spoofing, size limits, logs and error details.
+
+No linter, formatter or type checker is configured. Also verify changes by running the
+app: exercise endpoints via `http://localhost:8000/docs` or `curl`, and load the frontend.
 
 ## Backend
 
@@ -76,10 +97,9 @@ If you add tests, use pytest in a top-level `tests/` directory.
 | GET | `/health`, `/health/live`, `/health/ready` | Health and Kubernetes-style probes |
 | GET | `/api/me` | This instance's animal profile (`Animal`) |
 | GET | `/api/friends` | List friends |
-| POST | `/api/friends` | Add a friend from a full `Friend` payload |
+| POST | `/api/friends` | Add a friend from a `Friend` payload, verified against `https://<dns_name>/api/me` |
 | POST | `/api/friends/add` | Add a friend by instance URL: the backend fetches `<url>/api/me` (used by the UI, avoids CORS) |
-| POST | `/api/health-check` | Fetch `/api/me` on a list of instance URLs, report up/down and latency (used by the Monitoring page) |
-| GET/POST/DELETE | `/api/items`, `/api/items/{id}` | Leftover demo CRUD, not used by the UI |
+| POST | `/api/health-check` | Fetch `/api/me` on up to 50 instance URLs concurrently, report up/down and latency (used by the Monitoring page) |
 
 ### Behavior worth knowing
 
@@ -91,11 +111,26 @@ If you add tests, use pytest in a top-level `tests/` directory.
 - **Friends live in memory** (`friends_db` in `routes.py`) and are lost on restart.
   Limit is 1000; duplicates and adding yourself are rejected.
 - **Friend domain allowlist**: `ALLOWED_FRIEND_DOMAINS` in `routes.py`
-  (`vsos.ethz.ch`, `furnet.lukasre.ch` and their subdomains). Anything else gets a
-  403, including `localhost`, so adding friends fails in a purely local setup unless
-  the list is extended.
-- URLs given to `/api/friends/add` and `/api/health-check` get `https://` prepended
-  when no scheme is present. The frontend links friends to `https://<dns_name>`.
+  (`vsos.ethz.ch`, `furnet.lukasre.ch` and their subdomains). It is checked against
+  the URL being added, before anything is fetched. Anything else gets a 403, including
+  `localhost`, so adding friends fails in a purely local setup unless the list is
+  extended.
+- **Friend identity comes from the contacted host**: `dns_name` is the host that was
+  fetched and `unique_id` is built from it and the served name. The `id` and
+  `instance_url` a remote reports about itself are not trusted (the `id` is only used
+  to catch adding yourself).
+- **URL handling**: URLs given to `/api/friends/add` and `/api/health-check` get
+  `https://` prepended when no scheme is present and are reduced to scheme, host and
+  port (`instance_origin()`); only that origin's `/api/me` is fetched. The frontend
+  links friends to `https://<dns_name>`.
+- **Health check SSRF guard**: allowlisted hosts are checked directly. Any other host
+  is only contacted if all its addresses are public, and the connection is pinned to
+  the checked address (Host header and SNI keep the name) so DNS rebinding cannot
+  redirect it. Local and Docker-internal URLs therefore show "Blocked".
+- **Remote data is untrusted**: profiles are capped at 64 KiB (`MAX_PROFILE_BYTES`),
+  friend names at 100 characters, redirects are not followed, and errors returned to
+  clients name the exception type only (details go to the log). Log untrusted values
+  with `%r` so they cannot forge log lines, and never log remote response bodies.
 
 ### Configuration
 
@@ -114,7 +149,8 @@ If you add tests, use pytest in a top-level `tests/` directory.
 - Routes (`react-router-dom`): `/` (profile, add-friend form, friend list) and
   `/monitoring` (polls `/api/health-check` every 5 s for a hardcoded list of
   workshop instances in `Monitoring.jsx`).
-- Uses plain `fetch` against relative `/api/...` paths; `axios` is installed but unused.
+- Uses plain `fetch` against relative `/api/...` paths.
+- `Monitoring.jsx` refuses more than 50 instances, the backend's per-request limit.
 - Tailwind v4 through `@tailwindcss/vite`; there is no `tailwind.config.js`, styles
   start from `@import "tailwindcss"` in `src/index.css`.
 - `VITE_COMMIT_HASH` (Docker build arg `COMMIT_HASH`, set by CI) shows the short
@@ -130,6 +166,8 @@ If you add tests, use pytest in a top-level `tests/` directory.
 - Backend and frontend both expose `/health/live` and `/health/ready` for Kubernetes
   probes, but no Kubernetes manifests live in this repo.
 - Changing the animal means rebuilding the backend image.
+- All containers run as non-root: the backend as `furnet` (UID 10001), frontend and
+  gateway on `nginxinc/nginx-unprivileged` (UID 101), so they listen on 8080, not 80.
 
 ## Conventions
 
@@ -141,4 +179,5 @@ If you add tests, use pytest in a top-level `tests/` directory.
 - Anything that calls a remote instance must handle timeouts, bad responses and
   offline peers; participants' instances are often down or misconfigured.
 - `README.md` still describes the original items-only template (mentions
-  `tailwind.config.js`, the ItemList UI, Vite 6) and is out of date.
+  `tailwind.config.js`, the removed ItemList UI and `/api/items` endpoints, Vite 6)
+  and is out of date.

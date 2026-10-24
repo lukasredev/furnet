@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 
+// The backend checks at most this many instances per request
+const MAX_INSTANCES = 50
+
 function Monitoring() {
   // Default list of workshop instances
   const defaultInstances = [
@@ -67,10 +70,11 @@ function Monitoring() {
 
       const data = await response.json()
 
-      // Convert array to object keyed by instance_url
+      // Results come back in request order. Key them by the URL as entered, because the
+      // backend normalizes instance_url (adds https://, drops a trailing slash)
       const statusMap = {}
-      data.forEach((status) => {
-        statusMap[status.instance_url] = status
+      data.forEach((status, i) => {
+        statusMap[instances[i]] = status
       })
 
       setHealthStatuses(statusMap)
@@ -91,6 +95,11 @@ function Monitoring() {
     // Don't add duplicates
     if (instances.includes(trimmedUrl)) {
       alert('This instance is already in the monitoring list')
+      return
+    }
+
+    if (instances.length >= MAX_INSTANCES) {
+      alert(`You can monitor at most ${MAX_INSTANCES} instances`)
       return
     }
 

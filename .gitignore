@@ -9,3 +9,8 @@
 *.swp
 *.swo
 *~
+
+# Python (tests/ lives at the root)
+__pycache__/
+*.py[cod]
+.pytest_cache/
