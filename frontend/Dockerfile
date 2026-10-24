@@ -18,7 +18,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginx:1.30.6-alpine
+FROM nginx:1.31.0-alpine
 
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
