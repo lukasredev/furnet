@@ -32,7 +32,7 @@ services:
       - furnet
 
   gateway:
-    image: nginxinc/nginx-unprivileged:1.30.6-alpine
+    image: nginxinc/nginx-unprivileged:1.31.7-alpine
     container_name: furnet-gateway
     ports:
       - "8080:8080"
